@@ -54,7 +54,7 @@ Three issues occur frequently enough in EDGAR data to warrant systematic checkin
 
 **1. Cumulative YTD vs. Quarterly values** — EDGAR returns both in the same endpoint. A Q3 YTD revenue of $90B looks like a strong quarter; the actual standalone Q3 figure might be $28B. This is the most common source of inflated revenue figures in EDGAR-pulled data.
 
-**2. XBRL tag changes** — Apple switched revenue tags in 2019. An analyst pulling only `Revenues` gets data through 2018; later years are on `RevenueFromContractWithCustomerExcludingAssessedTax`. The completeness check flags a metric only when every candidate tag comes back empty, so a retired tag that still has old rows is not, by itself, a completeness failure.
+**2. XBRL tag changes** — Apple switched revenue tags in 2019. An analyst pulling only `Revenues` gets data through 2018; later years are on `RevenueFromContractWithCustomerExcludingAssessedTax`. The completeness check flags a metric only when every candidate tag comes back empty, so a retired tag that still has old rows is not, by itself, a completeness failure. Ingestion now keeps the candidate with the latest 10-Q/10-K period end. The workbook in this repo is still the earlier run, which kept the first tag that returned any rows. See Limitations.
 
 **3. Refilings** — Companies refile quarters when correcting errors. EDGAR keeps all versions. The duplicate detection check identifies conflicting entries and flags them for manual resolution.
 
@@ -105,6 +105,20 @@ The Excel workbook and the outputs saved in the notebook are the run from **2026
 For Apple, fiscal Q4 ends in late September. From FY2021 the 10-K gross-profit fact on that date is the full year (about 363 days). There is no separate ~90-day fourth-quarter fact. Many year-end rows also have no calendar `frame`, so the filter drops them even in earlier years when a quarterly fact does exist. The kept series jumps from late June to late December, and the check logs a High issue for every metric. The same shape shows up for the other companies whose fiscal year does not end in December. Eighteen gaps are longer than 200 days, and 14 of those are longer than 400. Those look like real holes in the extracted series. They are stored at the same severity as the routine ~182-day skip, so the issue log does not separate them.
 
 The 130-day cutoff and the point weights are unchanged, so the workbook still matches the check that produced it. A wider cutoff would also hide the long gaps, and different weights would be a different scorecard than the one saved in the workbook.
+
+**The saved revenue pull kept the first tag with any rows, which misses Apple's post-2019 revenue.** Candidates are requested as `Revenues`, then `SalesRevenueNet`, then `RevenueFromContractWithCustomerExcludingAssessedTax`. The 2026-05-29 loop stopped at the first tag that returned data. Checked against the SEC company-concept API on 2026-11-22, that meant:
+
+| Company | Tag the saved run audited | Tag that covers recent years |
+|---|---|---|
+| Apple | `Revenues`, 11 rows, through 2018-09-29 | `RevenueFromContractWithCustomerExcludingAssessedTax`, 120 rows, through 2026-09-26 |
+| Microsoft | `Revenues`, 31 rows, through 2010-12-31 | `RevenueFromContractWithCustomerExcludingAssessedTax`, 136 rows, through 2026-09-30 |
+| Amazon | `SalesRevenueNet`, 185 rows, through 2018-06-30 | `RevenueFromContractWithCustomerExcludingAssessedTax`, 132 rows, through 2026-09-30 |
+| Johnson & Johnson | `Revenues`, 18 rows, through 2014-09-28 | `RevenueFromContractWithCustomerExcludingAssessedTax`, 132 rows, through 2026-09-27 |
+| Tesla | `Revenues`, 286 rows, through 2026-09-30 | `Revenues` is still current. The other tag has 49 rows and the same end date. |
+
+The notebook now keeps the candidate whose latest 10-Q or 10-K period end is the most recent. If two tags end on the same day, it keeps the one with more rows, so Tesla stays on the longer `Revenues` series. The completeness check still only flags a metric when every candidate tag is empty, so it would not have caught the old behavior. Revenue findings in the saved workbook do not include Apple's post-2019 tag. Re-run the notebook before treating those revenue rows as current.
+
+Row counts move as companies file. A later pull will not match the table exactly.
 
 ---
 
