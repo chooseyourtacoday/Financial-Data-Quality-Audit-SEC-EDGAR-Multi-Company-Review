@@ -54,7 +54,7 @@ Three issues occur frequently enough in EDGAR data to warrant systematic checkin
 
 **1. Cumulative YTD vs. Quarterly values** — EDGAR returns both in the same endpoint. A Q3 YTD revenue of $90B looks like a strong quarter; the actual standalone Q3 figure might be $28B. This is the most common source of inflated revenue figures in EDGAR-pulled data.
 
-**2. XBRL tag changes** — Apple switched revenue tags in 2019. An analyst pulling only `Revenues` gets data through 2018; the rest is blank. The completeness check catches this before it causes silent data gaps.
+**2. XBRL tag changes** — Apple switched revenue tags in 2019. An analyst pulling only `Revenues` gets data through 2018; later years are on `RevenueFromContractWithCustomerExcludingAssessedTax`. The completeness check flags a metric only when every candidate tag comes back empty, so a retired tag that still has old rows is not, by itself, a completeness failure.
 
 **3. Refilings** — Companies refile quarters when correcting errors. EDGAR keeps all versions. The duplicate detection check identifies conflicting entries and flags them for manual resolution.
 
@@ -67,16 +67,17 @@ pip install requests pandas openpyxl
 jupyter notebook financial_data_quality_audit.ipynb
 ```
 
-Runtime: ~3–4 minutes (live SEC EDGAR API calls). Update the `User-Agent` header with your name/email per [SEC EDGAR API guidelines](https://www.sec.gov/os/accessing-edgar-data).
+Runtime: ~3–4 minutes (live SEC EDGAR API calls). Update the `User-Agent` header with your name/email per the [SEC fair-access rules for EDGAR](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data).
 
 ---
 
 ## Project Structure
 
 ```
-financial_data_quality_audit/
+.
 ├── financial_data_quality_audit.ipynb   # Main audit notebook (13 sections)
-├── Financial_Data_Quality_Audit.xlsx    # Sample output — 4-sheet audit report
+├── Financial_Data_Quality_Audit.xlsx    # Sample output — 4-sheet audit report (run date 2026-05-29)
+├── .gitignore                           # Ignores Jupyter checkpoint files
 └── README.md
 ```
 
@@ -90,6 +91,20 @@ This audit is **Step 1** in a two-project sequence:
 2. **[SEC EDGAR Financial Dashboard](https://github.com/chooseyourtacoday/SEC-EDGAR-Financial-Analysis)** — analyze the clean data
 
 Running the audit first means every number in the dashboard has been verified. That's the difference between an analyst who delivers results and one who delivers *reliable* results.
+
+---
+
+## Limitations
+
+The Excel workbook and the outputs saved in the notebook are the run from **2026-05-29**. Re-running the notebook rebuilds both from live EDGAR data. The notes below explain that saved scorecard.
+
+**Every company scores 0/100, and that number is not a ranking of the filers.** The score starts at 100 and subtracts 10 points for each Critical issue, 5 for High, 2 for Medium, and 1 for Low, then floors at 0. The issue log has 209 rows. **163 of them are Temporal Continuity, and all 163 are High.** Those temporal findings alone subtract more than 100 points for every company: 105 for Johnson & Johnson, 115 for Amazon, 160 for Microsoft, 210 for Apple, and 225 for Tesla. After the score hits 0, more issues do not change it. A 0 does not mean every check failed.
+
+**Most of those temporal findings are one missing quarter, on a repeating schedule.** The check keeps 10-Q and 10-K facts whose `frame` value contains `Q`, drops duplicate period ends, and flags any gap longer than 130 days as High (the code comment says to expect about 90 days). Of the 163 gaps, 145 are between 131 and 200 days. Ninety-nine are exactly 182 days and 37 are exactly 183. That is the distance from one quarter-end to the quarter-end after next.
+
+For Apple, fiscal Q4 ends in late September. From FY2021 the 10-K gross-profit fact on that date is the full year (about 363 days). There is no separate ~90-day fourth-quarter fact. Many year-end rows also have no calendar `frame`, so the filter drops them even in earlier years when a quarterly fact does exist. The kept series jumps from late June to late December, and the check logs a High issue for every metric. The same shape shows up for the other companies whose fiscal year does not end in December. Eighteen gaps are longer than 200 days, and 14 of those are longer than 400. Those look like real holes in the extracted series. They are stored at the same severity as the routine ~182-day skip, so the issue log does not separate them.
+
+The 130-day cutoff and the point weights are unchanged, so the workbook still matches the check that produced it. A wider cutoff would also hide the long gaps, and different weights would be a different scorecard than the one saved in the workbook.
 
 ---
 

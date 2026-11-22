@@ -1,0 +1,4 @@
+# Jupyter checkpoint copies. The directory is where Jupyter writes them;
+# the filename pattern also covers a checkpoint notebook dropped at the repo root.
+.ipynb_checkpoints/
+*-checkpoint.ipynb
