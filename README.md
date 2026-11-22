@@ -54,7 +54,7 @@ Three issues occur frequently enough in EDGAR data to warrant systematic checkin
 
 **1. Cumulative YTD vs. Quarterly values** — EDGAR returns both in the same endpoint. A Q3 YTD revenue of $90B looks like a strong quarter; the actual standalone Q3 figure might be $28B. This is the most common source of inflated revenue figures in EDGAR-pulled data.
 
-**2. XBRL tag changes** — Apple switched revenue tags in 2019. An analyst pulling only `Revenues` gets data through 2018; later years are on `RevenueFromContractWithCustomerExcludingAssessedTax`. The completeness check flags a metric only when every candidate tag comes back empty, so a retired tag that still has old rows is not, by itself, a completeness failure. Ingestion now keeps the candidate with the latest 10-Q/10-K period end. The workbook in this repo is still the earlier run, which kept the first tag that returned any rows. See Limitations.
+**2. XBRL tag changes** — Apple switched revenue tags in 2019. An analyst pulling only `Revenues` gets data through 2018; later years are on `RevenueFromContractWithCustomerExcludingAssessedTax`. The completeness check flags a metric only when every candidate tag comes back empty, so a retired tag that still has old rows is not, by itself, a completeness failure. The saved run (2026-11-22) keeps the candidate with the latest 10-Q/10-K period end, so Apple, Microsoft, Amazon, and Johnson & Johnson are audited on that current tag. Tesla stays on `Revenues`, which is already current. See Limitations.
 
 **3. Refilings** — Companies refile quarters when correcting errors. EDGAR keeps all versions. The duplicate detection check identifies conflicting entries and flags them for manual resolution.
 
@@ -76,7 +76,7 @@ Runtime: ~3–4 minutes (live SEC EDGAR API calls). Update the `User-Agent` head
 ```
 .
 ├── financial_data_quality_audit.ipynb   # Main audit notebook (13 sections)
-├── Financial_Data_Quality_Audit.xlsx    # Sample output — 4-sheet audit report (run date 2026-05-29)
+├── Financial_Data_Quality_Audit.xlsx    # Sample output — 4-sheet audit report (run date 2026-11-22)
 ├── .gitignore                           # Ignores Jupyter checkpoint files
 └── README.md
 ```
@@ -96,27 +96,29 @@ Running the audit first means every number in the dashboard has been verified. T
 
 ## Limitations
 
-The Excel workbook and the outputs saved in the notebook are the run from **2026-05-29**. Re-running the notebook rebuilds both from live EDGAR data. The notes below explain that saved scorecard.
+The Excel workbook and the outputs saved in the notebook are the run from **2026-11-22**. Ingestion on that run kept the revenue tag whose latest 10-Q/10-K period end is most recent. An earlier run on **2026-05-29** stopped at the first tag with any rows, logged **209** issues, and also scored every company **0/100**. The counts below are the 2026-11-22 re-run.
 
-**Every company scores 0/100, and that number is not a ranking of the filers.** The score starts at 100 and subtracts 10 points for each Critical issue, 5 for High, 2 for Medium, and 1 for Low, then floors at 0. The issue log has 209 rows. **163 of them are Temporal Continuity, and all 163 are High.** Those temporal findings alone subtract more than 100 points for every company: 105 for Johnson & Johnson, 115 for Amazon, 160 for Microsoft, 210 for Apple, and 225 for Tesla. After the score hits 0, more issues do not change it. A 0 does not mean every check failed.
+**Every company still scores 0/100, and that number is not a ranking of the filers.** The score starts at 100 and subtracts 10 points for each Critical issue, 5 for High, 2 for Medium, and 1 for Low, then floors at 0. This run logged **238** issues: 28 Critical, 193 High, and 17 Medium. **184 of them are Temporal Continuity, and all 184 are High.** Those temporal findings alone subtract more than 100 points for every company: 235 for Apple, 210 for Microsoft, 225 for Tesla, 135 for Amazon, and 115 for Johnson & Johnson. After the score hits 0, more issues do not change it. A 0 does not mean every check failed.
 
-**Most of those temporal findings are one missing quarter, on a repeating schedule.** The check keeps 10-Q and 10-K facts whose `frame` value contains `Q`, drops duplicate period ends, and flags any gap longer than 130 days as High (the code comment says to expect about 90 days). Of the 163 gaps, 145 are between 131 and 200 days. Ninety-nine are exactly 182 days and 37 are exactly 183. That is the distance from one quarter-end to the quarter-end after next.
+Issue counts this run: Apple 60, Microsoft 49, Tesla 57, Amazon 38, Johnson & Johnson 34. On 2026-05-29 those counts were 54, 37, 56, 31, and 31.
 
-For Apple, fiscal Q4 ends in late September. From FY2021 the 10-K gross-profit fact on that date is the full year (about 363 days). There is no separate ~90-day fourth-quarter fact. Many year-end rows also have no calendar `frame`, so the filter drops them even in earlier years when a quarterly fact does exist. The kept series jumps from late June to late December, and the check logs a High issue for every metric. The same shape shows up for the other companies whose fiscal year does not end in December. Eighteen gaps are longer than 200 days, and 14 of those are longer than 400. Those look like real holes in the extracted series. They are stored at the same severity as the routine ~182-day skip, so the issue log does not separate them.
+**Most of those temporal findings are one missing quarter, on a repeating schedule.** The check keeps 10-Q and 10-K facts whose `frame` value contains `Q`, drops duplicate period ends, and flags any gap longer than 130 days as High (the code comment says to expect about 90 days). Of the 184 gaps, 166 are between 131 and 200 days. 107 are exactly 182 days and 48 are exactly 183. That is the distance from one quarter-end to the quarter-end after next.
+
+For Apple, fiscal Q4 ends in late September. From FY2021 the 10-K gross-profit fact on that date is the full year (about 363 days). There is no separate ~90-day fourth-quarter fact. Many year-end rows also have no calendar `frame`, so the filter drops them even in earlier years when a quarterly fact does exist. The kept series jumps from late June to late December, and the check logs a High issue for every metric. The same shape shows up for the other companies whose fiscal year does not end in December. Eighteen gaps are longer than 200 days, and 14 of those are longer than 400. Those 18 long gaps are the same ones as in the 2026-05-29 log. The 21 new temporal rows are all in the 131–200 day bucket, from revenue facts the first-tag pull did not include. They sit at the same severity as the long gaps, so the issue log does not separate them.
 
 The 130-day cutoff and the point weights are unchanged, so the workbook still matches the check that produced it. A wider cutoff would also hide the long gaps, and different weights would be a different scorecard than the one saved in the workbook.
 
-**The saved revenue pull kept the first tag with any rows, which misses Apple's post-2019 revenue.** Candidates are requested as `Revenues`, then `SalesRevenueNet`, then `RevenueFromContractWithCustomerExcludingAssessedTax`. The 2026-05-29 loop stopped at the first tag that returned data. Checked against the SEC company-concept API on 2026-11-22, that meant:
+**Revenue tags in this run.** Candidates are still requested as `Revenues`, then `SalesRevenueNet`, then `RevenueFromContractWithCustomerExcludingAssessedTax`. The saved workbook uses the 2026-11-22 tag. The 2026-05-29 run used the other tag. Row counts are raw company-concept rows from each pull.
 
-| Company | Tag the saved run audited | Tag that covers recent years |
+| Company | Tag audited on 2026-11-22 | Tag the 2026-05-29 run kept |
 |---|---|---|
-| Apple | `Revenues`, 11 rows, through 2018-09-29 | `RevenueFromContractWithCustomerExcludingAssessedTax`, 120 rows, through 2026-09-26 |
-| Microsoft | `Revenues`, 31 rows, through 2010-12-31 | `RevenueFromContractWithCustomerExcludingAssessedTax`, 136 rows, through 2026-09-30 |
-| Amazon | `SalesRevenueNet`, 185 rows, through 2018-06-30 | `RevenueFromContractWithCustomerExcludingAssessedTax`, 132 rows, through 2026-09-30 |
-| Johnson & Johnson | `Revenues`, 18 rows, through 2014-09-28 | `RevenueFromContractWithCustomerExcludingAssessedTax`, 132 rows, through 2026-09-27 |
-| Tesla | `Revenues`, 286 rows, through 2026-09-30 | `Revenues` is still current. The other tag has 49 rows and the same end date. |
+| Apple | `RevenueFromContractWithCustomerExcludingAssessedTax`, 120 rows, through 2026-09-26 | `Revenues`, 11 rows, through 2018-09-29 |
+| Microsoft | `RevenueFromContractWithCustomerExcludingAssessedTax`, 136 rows, through 2026-09-30 | `Revenues`, 31 rows, through 2010-12-31 |
+| Amazon | `RevenueFromContractWithCustomerExcludingAssessedTax`, 132 rows, through 2026-09-30 | `SalesRevenueNet`, 185 rows, through 2018-06-30 |
+| Johnson & Johnson | `RevenueFromContractWithCustomerExcludingAssessedTax`, 132 rows, through 2026-09-27 | `Revenues`, 18 rows, through 2014-09-28 |
+| Tesla | `Revenues`, 286 rows, through 2026-09-30 | `Revenues`, 278 rows (already the current tag) |
 
-The notebook now keeps the candidate whose latest 10-Q or 10-K period end is the most recent. If two tags end on the same day, it keeps the one with more rows, so Tesla stays on the longer `Revenues` series. The completeness check still only flags a metric when every candidate tag is empty, so it would not have caught the old behavior. Revenue findings in the saved workbook do not include Apple's post-2019 tag. Re-run the notebook before treating those revenue rows as current.
+Category totals this run: Temporal Continuity 184, Cross-Filing Reconciliation 30, Anomaly Detection 18, XBRL Tag Consistency 5, Completeness 1. On 2026-05-29 those were 163, 22, 18, 5, and 1. Mathematical consistency and duplicate detection still logged nothing. The completeness check still only flags a metric when every candidate tag is empty, so it would not have caught the old first-tag behavior.
 
 Row counts move as companies file. A later pull will not match the table exactly.
 
